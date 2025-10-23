@@ -1,7 +1,7 @@
 # color-selector
 Color for your fancy figs
 
-![Color selector]([https://github.com/hengbingao/color-selector/png/C_session.png](https://github.com/hengbingao/color-selector/blob/main/png/C_session.png))
+![Color selector](png/C_session.png)
 
 
 ## **Usage**
