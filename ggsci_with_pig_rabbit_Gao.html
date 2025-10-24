@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ggsci Color Explorer — with Pig & Rabbit Runners</title>
+<style>
+/* layout */
+html { font-size: 1.2em; }
+body { font-family: Arial, sans-serif; background-color: white; margin:0; padding:0; display:flex; justify-content:center;}
+.container { width:95%; max-width:1400px; display:flex; flex-wrap:wrap; gap:30px; margin-top:30px;}
+
+/* left panel */
+.left-panel { flex:1 1 300px; display:flex; flex-direction:column; align-items:center; min-width:250px; padding:15px; border-radius:10px; background-color:#fafafa; box-shadow:0 3px 8px rgba(0,0,0,0.05);}
+.controls { display:flex; flex-wrap:wrap; gap:15px; align-items:center; margin-bottom:15px;}
+#paletteContainer { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-start; margin-bottom:15px;}
+.color-box { width:36px; height:36px; cursor:pointer; border:1px solid #ccc; border-radius:6px; transition:transform 0.18s;}
+.color-box:hover { transform:scale(1.08); }
+#colorMaxInfo { margin-bottom:1em; color:#555; font-weight:500; }
+#customColorContainer { display:none; width:100%; flex-direction:column; align-items:center; margin-top:10px;}
+.circular-palette-wrapper { position:relative; width:100%; max-width:288px; display:flex; flex-direction:column; align-items:center; margin-top:10px;}
+.circular-palette { position:relative; width:100%; padding-bottom:100%; border-radius:50%; }
+.circular-palette .ring-color { position:absolute; width:36px; height:36px; border-radius:50%; cursor:pointer; border:1px solid #fff; transition:transform 0.18s;}
+.circular-palette .ring-color:hover { transform:scale(1.15);}
+#generatedColors { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-start; margin-top:37px;}
+
+/* middle */
+.middle-panel { flex:0 0 140px; display:flex; flex-direction:column; align-items:center; min-width:120px;}
+.selected-list { border:1px solid #ccc; border-radius:10px; padding:1em; flex:1; display:flex; flex-direction:column; gap:8px; overflow-y:auto; width:100%;}
+
+/* right */
+.right-panel { flex:0 0 200px; min-width:150px;}
+.selected-labels { border:1px solid #ccc; border-radius:10px; padding:1em; display:flex; flex-direction:column; gap:8px; max-height:400px; overflow-y:auto;}
+.export-buttons { margin-top:15px; display:flex; flex-direction:column; gap:10px;}
+button { padding:0.6em 1em; border-radius:0.5em; border:1px solid #aaa; cursor:pointer; background-color:#f3f3f3; font-size:1.05em;}
+button:hover { background-color:#e5e5e5; transform:scale(1.03);}
+select, input[type=number] { font-size:1em; padding:0.4em 0.6em;}
+h2 { font-size:1.5em; margin-bottom:0.8em;}
+h3 { font-size:1.2em; margin-bottom:0.5em;}
+@media(max-width:900px){ .container { flex-direction:column; align-items:center; gap:25px;} .middle-panel,.right-panel { flex:1 1 100%; width:95%; } }
+
+/* ===== runners (pig & rabbit) ===== */
+/* container fixed to bottom */
+.runner-container {
+  position: fixed;
+  bottom: 8px;
+  left: 0;
+  width: 100%;
+  height: 72px;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 9999;
+}
+
+/* runner wrapper */
+.runner {
+  position: absolute;
+  bottom: 8px;
+  width: 40px;
+  height: 40px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transform-origin: center;
+  pointer-events: none;
+  user-select: none;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "EmojiOne Mozilla", sans-serif;
+  font-size: 1.4rem; /* smaller size as requested */
+  line-height: 1;
+}
+
+/* body (emoji) sits inside; we use additional elements for limbs */
+.runner .body {
+  position: relative;
+  z-index: 2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width: 100%;
+  height: 100%;
+}
+
+/* limbs (simple bars) */
+.runner .arm, .runner .leg {
+  position: absolute;
+  width: 7px;
+  height: 12px;
+  background: rgba(0,0,0,0.12);
+  border-radius: 3px;
+  z-index: 1;
+  transform-origin: top center;
+  will-change: transform;
+}
+
+/* arms: left / right */
+.runner .arm.left { left: -6px; top: 6px; transform-origin: 2px 4px; }
+.runner .arm.right { right: -6px; top: 6px; transform-origin: 5px 4px; }
+
+/* legs */
+.runner .leg.left { left: 6px; bottom: -2px; height: 14px; transform-origin: top center; }
+.runner .leg.right { right: 6px; bottom: -2px; height: 14px; transform-origin: top center; }
+
+/* running (limb swing) animations */
+@keyframes armSwing {
+  0% { transform: rotate(20deg); }
+  50% { transform: rotate(-30deg); }
+  100% { transform: rotate(20deg); }
+}
+@keyframes legSwing {
+  0% { transform: rotate(-20deg); }
+  50% { transform: rotate(30deg); }
+  100% { transform: rotate(-20deg); }
+}
+
+/* pig specific tint for limbs */
+.runner.pig .arm, .runner.pig .leg { background: rgba(0,0,0,0.12); }
+
+/* rabbit limbs slightly darker */
+.runner.rabbit .arm, .runner.rabbit .leg { background: rgba(0,0,0,0.18); }
+
+/* start swinging */
+.runner.running .arm.left { animation: armSwing 0.45s linear infinite; }
+.runner.running .arm.right { animation: armSwing 0.45s linear infinite 0.225s; }
+.runner.running .leg.left { animation: legSwing 0.45s linear infinite 0.225s; }
+.runner.running .leg.right { animation: legSwing 0.45s linear infinite; }
+
+/* flipping: mirror horizontally */
+.runner.flipped {
+  transform: scaleX(-1);
+}
+
+/* movement: half speed (longer durations for slower movement) */
+/* original durations were e.g. 8s/10s, we double to 16s/20s to slow down by half */
+@keyframes runPig {
+  0%   { left: -100px; }
+  45%  { left: calc(100% - 60px); }
+  50%  { left: calc(100% - 60px); }
+  95%  { left: -60px; }
+  100% { left: -100px; }
+}
+@keyframes runRabbit {
+  0%   { left: calc(100% + 80px); }
+  45%  { left: 10px; }
+  50%  { left: 10px; }
+  95%  { left: calc(100% - 40px); }
+  100% { left: calc(100% + 80px); }
+}
+
+/* assign animation to runners */
+.runner.pig { animation: runPig 32s linear infinite; left: -100px; }
+.runner.rabbit { animation: runRabbit 40s linear infinite; left: calc(100% - 40px); }
+
+/* reduce size on small screens */
+@media (max-width:600px){
+  .runner { width:32px; height:32px; font-size:1.05rem; }
+  .runner .arm, .runner .leg { width:6px; height:10px; }
+}
+
+/* keep UI interaction usable */
+.selected-list::-webkit-scrollbar { height:6px; width:6px; }
+.selected-list::-webkit-scrollbar-thumb { background:#ccc; border-radius:6px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- 左侧面板 -->
+  <div class="left-panel">
+    <h2>🎨 ggsci 调色板 [Hengbin]</h2>
+    <div class="controls">
+      <label>类型:</label>
+      <select id="typeSelect">
+        <option value="discrete">离散型 (Discrete)</option>
+        <option value="continuous">连续型 (Continuous)</option>
+      </select>
+
+      <label>调色板:</label>
+      <select id="paletteSelect"></select>
+
+      <label id="countLabel">数量:</label>
+      <input type="number" id="colorCount" min="3" max="30" value="10">
+    </div>
+
+    <div id="colorMaxInfo"></div>
+
+    <div id="paletteContainer"></div>
+
+    <div id="customColorContainer">
+      <h3>自定义色环</h3>
+      <div class="circular-palette-wrapper">
+        <div class="circular-palette" id="circularPalette"></div>
+        <div id="generatedColors"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中间已选颜色 -->
+  <div class="middle-panel">
+    <h3>已选颜色</h3>
+    <div id="selectedColors" class="selected-list"></div>
+  </div>
+
+  <!-- 右侧颜色代码 -->
+  <div class="right-panel">
+    <h3>颜色代码</h3>
+    <div id="selectedLabels" class="selected-labels"></div>
+    <div class="export-buttons">
+      <button id="exportCSV">导出 CSV</button>
+      <button id="exportJSON">导出 JSON</button>
+      <button id="exportR">导出 R 向量</button>
+    </div>
+  </div>
+</div>
+
+<!-- runners: pig and rabbit (no rainbow tail) -->
+<div class="runner-container" aria-hidden="true">
+  <div class="runner pig running" id="pig">
+    <div class="arm left"></div>
+    <div class="arm right"></div>
+    <div class="body">🐷</div>
+    <div class="leg left"></div>
+    <div class="leg right"></div>
+  </div>
+
+  <div class="runner rabbit running" id="rabbit">
+    <div class="arm left"></div>
+    <div class="arm right"></div>
+    <div class="body">🐰</div>
+    <div class="leg left"></div>
+    <div class="leg right"></div>
+  </div>
+</div>
+
+<script>
+// ----------------- original palette code -----------------
+const discretePalettes = {
+ "npg_10": { max: 10, colors: ['#E64B35','#4DBBD5','#00A087','#3C5488','#F39B7F','#8491B4','#91D1C2','#DC0000','#7E6148','#B09C85'] },
+  "aaas_10": { max: 10, colors: ['#3B4992','#EE0000','#008B45','#631879','#008280','#BB0021','#5F559B','#A20056','#5A5A5A','#FFAA00'] },
+  "nejm_8": { max: 8, colors: ['#BC3C29','#0072B5','#E18727','#20854E','#7876B1','#6F99AD','#FFDC91','#EE4C97'] },
+  "lancet_9": { max: 9, colors: ['#00468B','#ED0000','#42B540','#0099B4','#925E9F','#FDAF91','#AD002A','#ADB6B6','#FFDD00'] },
+  "jama_7": { max: 7, colors: ['#374E55','#DF8F44','#00A1D5','#B24745','#79AF97','#6A6599','#80796B'] },
+  "jco_11": { max: 11, colors: ['#0072B5','#E18727','#20854E','#7876B1','#6F99AD','#FFDC91','#EE4C97','#E64B35','#4DBBD5','#00A087','#3C5488'] },
+  "ucscgb_26": { max: 26, colors: [
+  "#FF0000FF","#FF9900FF","#FFCC00FF","#00FF00FF","#6699FFFF","#CC33FFFF","#99991EFF",
+  "#999999FF","#FF00CCFF","#CC0000FF","#FFCCCCFF","#FFFF00FF","#CCFF00FF","#358000FF",
+  "#0000CCFF","#99CCFFFF","#00FFFFFF","#CCFFFFFF","#9900CCFF","#CC99FFFF","#996600FF",
+  "#666600FF","#666666FF","#CCCCCCFF","#79CC3DFF","#CCCC99FF"
+  ] },
+  "d3_category10": { max: 10, colors: ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'] },
+  "d3_category20": { max: 20, colors: [
+  "#1F77B4FF","#FF7F0EFF","#2CA02CFF","#D62728FF","#9467BDFF","#8C564BFF","#E377C2FF",
+  "#7F7F7FFF","#BCBD22FF","#17BECFFF","#AEC7E8FF","#FFBB78FF","#98DF8AFF","#FF9896FF",
+  "#C5B0D5FF","#C49C94FF","#F7B6D2FF","#C7C7C7FF","#DBDB8DFF","#9EDAE5FF"
+  ] },
+  "locuszoom_7": { max: 7, colors: ['#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e','#e6ab02','#a6761d'] },
+   "igv_default_51": { max: 51, colors: [
+    "#5050FFFF","#CE3D32FF","#749B58FF","#F0E685FF","#466983FF","#BA6338FF","#5DB1DDFF",
+    "#802268FF","#6BD76BFF","#D595A7FF","#924822FF","#837B8DFF","#C75127FF","#D58F5CFF",
+    "#7A65A5FF","#E4AF69FF","#3B1B53FF","#CDDEB7FF","#612A79FF","#AE1F63FF","#E7C76FFF",
+    "#5A655EFF","#CC9900FF","#99CC00FF","#A9A9A9FF","#CC9900FF","#99CC00FF","#33CC00FF",
+    "#00CC33FF","#00CC99FF","#0099CCFF","#0A47FFFF","#4775FFFF","#FFC20AFF","#FFD147FF",
+    "#990033FF","#991A00FF","#996600FF","#809900FF","#339900FF","#00991AFF","#009966FF",
+    "#008099FF","#003399FF","#1A0099FF","#660099FF","#990080FF","#D60047FF","#FF1463FF",
+    "#00D68FFF","#14FFB1FF"
+  ] },
+  "igv_alternating_2": { max: 2, colors: ['#000000','#FFFFFF'] },
+  "uchicago_default_9": { max: 9, colors: ['#d7191c','#fdae61','#ffffbf','#a6d96a','#1a9641','#2b83ba','#abd9e9','#f46d43','#fdae61'] },
+  "uchicago_light_9": { max: 9, colors: ['#fdae61','#fee08b','#d9ef8b','#66c2a5','#3288bd','#5e4fa2','#9e0142','#d53e4f','#f46d43'] },
+  "uchicago_dark_9": { max: 9, colors: ['#a50026','#d73027','#f46d43','#fdae61','#fee08b','#ffffbf','#d9ef8b','#66c2a5','#3288bd'] },
+  "startrek_7": { max: 7, colors: ['#FF0000','#00FF00','#0000FF','#FFFF00','#FF00FF','#00FFFF','#FFFFFF'] },
+  "tron_7": { max: 7, colors: ['#FF5F1F','#FFBD1F','#00FF5F','#1FBDFF','#5F00FF','#FF1FFF','#1FFFBD'] },
+  "futurama_12": { max: 12, colors: ['#FF5733','#33FF57','#3357FF','#F0FF33','#FF33F0','#33F0FF','#FF9933','#33FF99','#9933FF','#FF3399','#33FF33','#3399FF'] },
+  "rickandmorty_12": { max: 12, colors: ['#FF0000','#00FF00','#0000FF','#FFFF00','#FF00FF','#00FFFF','#880000','#008800','#000088','#888800','#880088','#008888'] },
+  "simpsons_16": { max: 16, colors: ['#FEE433','#FFD700','#FFA500','#FF8C00','#FF4500','#FF0000','#DC143C','#C71585','#8A2BE2','#4B0082','#6A5ACD','#7B68EE','#00BFFF','#1E90FF','#00FA9A','#3CB371'] }
+};
+const continuousPalettes = {
+  red: ['#fff5f0','#fcbba1','#fb6a4a','#de2d26','#a50f15'],
+  blue: ['#f7fbff','#deebf7','#9ecae1','#3182bd','#08519c'],
+  green: ['#f7fcf5','#c7e9c0','#74c476','#238b45','#00441b'],
+  custom: []
+};
+
+// DOM refs
+const typeSelect = document.getElementById("typeSelect");
+const paletteSelect = document.getElementById("paletteSelect");
+const paletteContainer = document.getElementById("paletteContainer");
+const colorCountInput = document.getElementById("colorCount");
+const customColorContainer = document.getElementById("customColorContainer");
+const circularPalette = document.getElementById("circularPalette");
+const generatedColors = document.getElementById("generatedColors");
+const selectedColorsDiv = document.getElementById("selectedColors");
+const selectedLabelsDiv = document.getElementById("selectedLabels");
+const colorMaxInfo = document.getElementById("colorMaxInfo");
+
+// init options
+function updatePaletteOptions(){
+  paletteSelect.innerHTML = "";
+  const palettes = typeSelect.value === "discrete" ? discretePalettes : continuousPalettes;
+  for(const name in palettes){
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    paletteSelect.appendChild(opt);
+  }
+  updateCountLimit();
+  renderPalette();
+}
+updatePaletteOptions();
+
+typeSelect.addEventListener("change", updatePaletteOptions);
+paletteSelect.addEventListener("change", () => { updateCountLimit(); renderPalette(); });
+colorCountInput.addEventListener("input", renderPalette);
+
+function updateCountLimit(){
+  const type = typeSelect.value;
+  const paletteName = paletteSelect.value;
+  if(type==="discrete"){
+    const max = discretePalettes[paletteName].max;
+    colorCountInput.max = max;
+    colorCountInput.value = Math.min(parseInt(colorCountInput.value), max);
+    colorMaxInfo.textContent = `最大颜色数量: ${max}`;
+  }else{
+    colorCountInput.max = 30;
+    colorMaxInfo.textContent = "";
+  }
+}
+
+function renderPalette(){
+  paletteContainer.innerHTML="";
+  generatedColors.innerHTML="";
+  customColorContainer.style.display="none";
+  const type = typeSelect.value;
+  const paletteName = paletteSelect.value;
+  const count = parseInt(colorCountInput.value);
+  let colors = [];
+
+  if(type==="discrete"){
+    if(!discretePalettes[paletteName]) return;
+    colors = discretePalettes[paletteName].colors.slice(0,count);
+    colors.forEach(color=>{
+      const div = document.createElement("div");
+      div.className="color-box";
+      div.style.backgroundColor=color;
+      div.onclick=()=>addColor(color);
+      paletteContainer.appendChild(div);
+    });
+  }else{
+    if(paletteName==="custom"){
+      customColorContainer.style.display="flex";
+      generateCircularPalette();
+      return;
+    }else{
+      const base = continuousPalettes[paletteName] || [];
+      for(let i=0;i<count;i++){
+        const idx = Math.floor(i*(base.length-1)/(count-1));
+        colors.push(base[idx] || base[base.length-1] || '#cccccc');
+      }
+    }
+    colors.forEach(color=>{
+      const div=document.createElement("div");
+      div.className="color-box";
+      div.style.backgroundColor=color;
+      div.onclick=()=>addColor(color);
+      paletteContainer.appendChild(div);
+    });
+  }
+}
+
+function addColor(color){
+  const box = document.createElement("div");
+  box.className="color-box";
+  box.style.backgroundColor=color;
+  box.onclick=()=>{ box.remove(); label.remove(); };
+  selectedColorsDiv.appendChild(box);
+
+  const label = document.createElement("div");
+  label.textContent=color;
+  label.style.fontSize="0.9em";
+  selectedLabelsDiv.appendChild(label);
+}
+
+function generateCircularPalette(){
+  circularPalette.innerHTML="";
+  const size = Math.max(200, circularPalette.offsetWidth);
+  const center = size/2;
+  const rings=4, perRing=24;
+  for(let r=1;r<=rings;r++){
+    for(let i=0;i<perRing;i++){
+      const hue = i*360/perRing;
+      const lightness = 95 - r*15;
+      const color = `hsl(${hue}, 80%, ${lightness}%)`;
+      const div=document.createElement("div");
+      div.className="ring-color";
+      const angle=(i/perRing)*2*Math.PI;
+      const radius=(size/10) + r*(size/10);
+      div.style.left=`${center + radius*Math.cos(angle) - 18}px`;
+      div.style.top=`${center + radius*Math.sin(angle) - 18}px`;
+      div.style.backgroundColor=color;
+      div.onclick=()=>generateGradient(color);
+      circularPalette.appendChild(div);
+    }
+  }
+}
+
+function hslToHex(h,s,l){
+  s/=100;l/=100;
+  const k=n=>(n+h/30)%12;
+  const a=s*Math.min(l,1-l);
+  const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,9-k(n),1));
+  const toHex=x=>Math.round(255*x).toString(16).padStart(2,'0');
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+
+function generateGradient(baseColor){
+  generatedColors.innerHTML="";
+  const count=parseInt(colorCountInput.value);
+  const parts = baseColor.match(/\d+/g);
+  if(!parts) return;
+  const [h,s,l]=parts.map(Number);
+  for(let i=0;i<count;i++){
+    const light=95-(i*60/(count-1));
+    const hex=hslToHex(h,s,light);
+    const div=document.createElement("div");
+    div.className="color-box";
+    div.style.backgroundColor=hex;
+    div.onclick=()=>addColor(hex);
+    generatedColors.appendChild(div);
+  }
+}
+
+// export functions
+function getSelectedColors(){ return Array.from(selectedLabelsDiv.children).map(d=>d.textContent);}
+function download(filename,text){ const blob=new Blob([text],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click();}
+document.getElementById("exportCSV").onclick=()=>download("colors.csv",getSelectedColors().join("\n"));
+document.getElementById("exportJSON").onclick=()=>download("colors.json",JSON.stringify(getSelectedColors(),null,2));
+document.getElementById("exportR").onclick=()=>{
+  const arr=getSelectedColors().map(c=>`"${c}"`).join(", ");
+  download("colors.R",`c(${arr})`);
+};
+
+// ----------------- runner flip sync -----------------
+(function runnerFlipSync(){
+  const pig = document.getElementById('pig');
+  const rabbit = document.getElementById('rabbit');
+
+  function updateFlip(el){
+    const style = window.getComputedStyle(el);
+    const tr = style.transform || 'none';
+    let scaleX = 1;
+    if(tr && tr !== 'none'){
+      try{
+        const m = new DOMMatrixReadOnly(tr);
+        scaleX = m.a;
+      }catch(e){
+        // fallback parsing
+        const m = tr.match(/matrix\\(([-0-9.,e ]+)\\)/);
+        if(m){
+          const parts = m[1].split(',');
+          scaleX = parseFloat(parts[0]);
+        }
+      }
+    }
+    if(scaleX < 0){
+      el.classList.add('flipped');
+    } else {
+      el.classList.remove('flipped');
+    }
+  }
+
+  function tick(){
+    updateFlip(pig);
+    updateFlip(rabbit);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+
+// ensure runners start with limbs animating
+window.addEventListener('load', ()=>{
+  document.querySelectorAll('.runner').forEach(r=>{
+    r.classList.add('running');
+  });
+});
+</script>
+</body>
+</html>
